@@ -128,6 +128,41 @@ def reply(request, message_id, form_class=ComposeForm,
     }, context_instance=RequestContext(request))
 
 @login_required
+def forward(request, message_id, form_class=ComposeForm,
+        template_name='django_messages/compose.html', success_url=None,
+        recipient_filter=None, quote_helper=format_quote,
+        subject_template=_(u"%(subject)s"),):
+    """
+    Prepares the ``form_class`` form for forwarding a given message
+    (specified via ``message_id``). Uses the ``format_quote`` helper from
+    ``messages.utils`` to pre-format the quote. To change the quote format
+    assign a different ``quote_helper`` kwarg in your url-conf.
+
+    """
+    parent = get_object_or_404(Message, id=message_id)
+
+    if parent.sender != request.user and parent.recipient != request.user:
+        raise Http404
+
+    if request.method == "POST":
+        sender = request.user
+        form = form_class(request.POST, recipient_filter=recipient_filter)
+        if form.is_valid():
+            form.save(sender=request.user, parent_msg=parent)
+            messages.info(request, _(u"Message successfully sent."))
+            if success_url is None:
+                success_url = reverse('messages_inbox')
+            return HttpResponseRedirect(success_url)
+    else:
+        form = form_class(initial={
+            'body': parent.body,
+            'subject': subject_template % {'subject': parent.subject},
+            })
+    return render_to_response(template_name, {
+        'form': form,
+    }, context_instance=RequestContext(request))
+
+@login_required
 def delete(request, message_id, success_url=None):
     """
     Marks a message as deleted by sender or recipient. The message is not
